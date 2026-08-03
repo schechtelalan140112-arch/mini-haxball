@@ -30,6 +30,99 @@ function configureConnection(host){connection.on("open",()=>{if(host)startGame("
 const relevant=new Set(["w","a","s","d","x","arrowup","arrowdown","arrowleft","arrowright","m","r"]);
 window.addEventListener("keydown",e=>handleKey(e,true));window.addEventListener("keyup",e=>handleKey(e,false));window.addEventListener("blur",()=>localKeys.clear());
 function handleKey(e,down){const key=e.key.toLowerCase();if(!relevant.has(key))return;e.preventDefault();localKeys[down?"add":"delete"](key);if(mode==="guest"&&connection?.open&&["w","a","s","d","x"].includes(key))connection.send({type:"input",key,down});if(mode==="local"&&key==="r"&&down&&!e.repeat){scores={green:0,blue:0};updateScore();resetPositions();message("¡Marcador reiniciado!");}}
+/* LÓGICA DEL JOYSTICK Y BOTÓN PATEAR */
+const joystickZone = $("joystick-zone"), joystickStick = $("joystick-stick"), kickBtn = $("kick-button");
+let joystickActive = false, touchId = null, joystickCenter = { x: 0, y: 0 };
+
+if (joystickZone) {
+  joystickZone.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    touchId = touch.identifier;
+    joystickActive = true;
+    const rect = joystickZone.getBoundingClientRect();
+    joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    updateJoystick(touch);
+  }, { passive: false });
+
+  window.addEventListener("touchmove", e => {
+    if (!joystickActive) return;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === touchId) {
+        updateJoystick(e.touches[i]);
+        break;
+      }
+    }
+  }, { passive: false });
+
+  const endJoystick = e => {
+    if (!joystickActive) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === touchId) {
+        joystickActive = false;
+        touchId = null;
+        joystickStick.style.transform = `translate(0px, 0px)`;
+        ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
+        break;
+      }
+    }
+  };
+
+  window.addEventListener("touchend", endJoystick);
+  window.addEventListener("touchcancel", endJoystick);
+}
+
+function updateJoystick(touch) {
+  const dx = touch.clientX - joystickCenter.x;
+  const dy = touch.clientY - joystickCenter.y;
+  const dist = Math.hypot(dx, dy);
+  const maxRadius = 40;
+  const angle = Math.atan2(dy, dx);
+  
+  const clampedDist = Math.min(dist, maxRadius);
+  const stickX = Math.cos(angle) * clampedDist;
+  const stickY = Math.sin(angle) * clampedDist;
+  
+  joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
+
+  const deadzone = 10;
+  if (dist < deadzone) {
+    ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
+    return;
+  }
+
+  if (dx < -10) localKeys.add("a"); else localKeys.delete("a");
+  if (dx > 10) localKeys.add("d"); else localKeys.delete("d");
+  if (dy < -10) localKeys.add("w"); else localKeys.delete("w");
+  if (dy > 10) localKeys.add("s"); else localKeys.delete("s");
+
+  if (mode === "guest" && connection?.open) {
+    ["w", "a", "s", "d"].forEach(key => {
+      connection.send({ type: "input", key, down: localKeys.has(key) });
+    });
+  }
+}
+
+if (kickBtn) {
+  kickBtn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    localKeys.add("x");
+    if (mode === "guest" && connection?.open) {
+      connection.send({ type: "input", key: "x", down: true });
+    }
+  }, { passive: false });
+
+  const releaseKick = e => {
+    e.preventDefault();
+    localKeys.delete("x");
+    if (mode === "guest" && connection?.open) {
+      connection.send({ type: "input", key: "x", down: false });
+    }
+  };
+
+  kickBtn.addEventListener("touchend", releaseKick);
+  kickBtn.addEventListener("touchcancel", releaseKick);
+}
 function clamp(body,max){const s=Math.hypot(body.vx,body.vy);if(s>max){body.vx=body.vx/s*max;body.vy=body.vy/s*max;}}
 function updatePlayer(p,dt,input){const [up,down,left,right]=p.controls;let ax=(input.has(right)?1:0)-(input.has(left)?1:0),ay=(input.has(down)?1:0)-(input.has(up)?1:0);if(ax||ay){const d=Math.hypot(ax,ay);ax/=d;ay/=d;}p.vx+=ax*1280*dt;p.vy+=ay*1280*dt;p.vx*=Math.pow(.0008,dt);p.vy*=Math.pow(.0008,dt);clamp(p,p.maxSpeed||410);p.x+=p.vx*dt;p.y+=p.vy*dt;p.x=Math.max(field.left+p.r,Math.min(field.right-p.r,p.x));p.y=Math.max(field.top+p.r,Math.min(field.bottom-p.r,p.y));if(input.has(p.kick)&&p.kickReady)kick(p);if(!input.has(p.kick))p.kickReady=true;}
 function kick(p){p.kickReady=false;const dx=ball.x-p.x,dy=ball.y-p.y,d=Math.hypot(dx,dy)||1;if(d<p.r+ball.r+43){ball.vx+=dx/d*510+p.vx*.28;ball.vy+=dy/d*510+p.vy*.28;clamp(ball,720);}}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini HaxBall</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <h1>MINI HAXBALL</h1>
+      <section id="menu" class="panel">
+        <p class="eyebrow">FÚTBOL RÁPIDO PARA DOS</p>
+        <button id="local-button" class="primary">1 VS 1</button>
+        <button id="online-button" class="secondary">ONLINE</button>
+        <button id="practice-button" class="practice-button">PRACTICAR</button>
+      </section>
+      <section id="lobby" class="panel hidden">
+        <p class="eyebrow">PARTIDA ONLINE</p>
+        <h2>Invitá a un amigo</h2>
+        <p id="lobby-status">Creá una partida para obtener tu enlace.</p>
+        <button id="create-button" class="primary">CREAR PARTIDA</button>
+        <div id="invite-box" class="invite hidden">
+          <label for="invite-link">Enlace de invitación</label>
+          <input id="invite-link" readonly aria-label="Enlace de invitación" />
+          <button id="copy-button" class="secondary">COPIAR ENLACE</button>
+          <small>Esperando a que tu rival entre… Vos jugás con el equipo verde.</small>
+        </div>
+        <button class="back-button">← Volver</button>
+      </section>
+      <section id="practice" class="panel hidden">
+        <p class="eyebrow">ENTRENAMIENTO</p>
+        <h2>Elegí la dificultad</h2>
+        <p class="difficulty-help">Vas a jugar contra el equipo azul.</p>
+        <button class="difficulty-button beginner" data-difficulty="beginner">DEBUTANTE <small>Fácil</small></button>
+        <button class="difficulty-button pro" data-difficulty="pro">PROFESSIONAL <small>Medio</small></button>
+        <button class="difficulty-button goat" data-difficulty="goat">GOAT <small>Difícil</small></button>
+        <button class="back-button">← Volver</button>
+      </section>
+      <section id="match" class="hidden">
+        <div class="scoreboard" aria-label="Marcador"><span class="team green">VERDE <b id="green-score">0</b></span><span class="score-divider">—</span><span class="team blue"><b id="blue-score">0</b> AZUL</span></div>
+        <canvas id="game" width="1000" height="600" aria-label="Cancha de Mini HaxBall"></canvas>
+        <p id="message" class="message" aria-live="polite">¡A jugar!</p>
+        <section id="controls" class="controls"></section>
+        <button class="back-button">← Salir al menú</button>
+      </section>
+    </main>
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>

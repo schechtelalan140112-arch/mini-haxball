@@ -5,59 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mini HaxBall</title>
     <link rel="stylesheet" href="style.css" />
+    <!-- Librería para el modo Online -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   </head>
   <body>
     <main class="game-shell">
       <h1>MINI HAXBALL</h1>
+
+      <!-- PANEL MENÚ PRINCIPAL -->
       <section id="menu" class="panel">
-        <!-- Ajustes Generales -->
-    <div id="game-settings" class="card" style="margin-bottom: 15px; padding: 15px;">
-      <h3 style="margin-bottom: 15px; font-size: 18px;">Ajustes de Partida</h3>
-      
-      <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-        <label>Tu Color:</label>
-        <input type="color" id="my-color" value="#45df6a">
-      </div>
-      
-      <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-        <label>Tiempo (min, 0 = Libre):</label>
-        <input type="number" id="time-input" value="3" min="0" max="99" style="width: 50px; text-align: center; background: #111; color: white; border: 1px solid #445;">
-      </div>
-      
-      <div style="display: flex; justify-content: space-between;">
-        <label>Pelota:</label>
-        <select id="ball-style" style="background: #111; color: white; border: 1px solid #445; padding: 3px;">
-          <option value="0">Clásica (Blanca/Negra)</option>
-          <option value="1">Sabalero (Rojo/Negro)</option>
-          <option value="2">Campeón (Celeste/Blanco)</option>
-          <option value="3">Fuego</option>
-          <option value="4">Neón</option>
-          <option value="5">Dorada</option>
-          <option value="6">Tenis</option>
-          <option value="7">Básquet</option>
-          <option value="8">Sandía</option>
-          <option value="9">Oscura</option>
-        </select>
-      </div>
-    </div>
+        <div id="game-settings" class="card" style="margin-bottom: 15px; padding: 15px;">
+          <h3 style="margin-bottom: 15px; font-size: 18px;">Ajustes de Partida</h3>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <label for="my-color">Tu Color:</label>
+            <input type="color" id="my-color" value="#45df6a">
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <label for="time-input">Tiempo (min, 0 = Libre):</label>
+            <input type="number" id="time-input" value="3" min="0" max="99" style="width: 50px; text-align: center; background: #111; color: white; border: 1px solid #445;">
+          </div>
+          
+          <div style="display: flex; justify-content: space-between;">
+            <label for="ball-style">Pelota:</label>
+            <select id="ball-style" style="background: #111; color: white; border: 1px solid #445; padding: 3px;">
+              <option value="0">Clásica (Blanca/Negra)</option>
+              <option value="1">Sabalero (Rojo/Negro)</option>
+              <option value="2">Campeón (Celeste/Blanco)</option>
+              <option value="3">Fuego</option>
+              <option value="4">Neón</option>
+              <option value="5">Dorada</option>
+              <option value="6">Tenis</option>
+              <option value="7">Básquet</option>
+              <option value="8">Sandía</option>
+              <option value="9">Oscura</option>
+            </select>
+          </div>
+        </div>
+
         <p class="eyebrow">FÚTBOL RÁPIDO PARA DOS</p>
         <button id="local-button" class="primary">1 VS 1</button>
         <button id="online-button" class="secondary">ONLINE</button>
         <button id="practice-button" class="practice-button">PRACTICAR</button>
       </section>
+
+      <!-- PANEL LOBBY ONLINE -->
       <section id="lobby" class="panel hidden">
         <p class="eyebrow">PARTIDA ONLINE</p>
         <h2>Invitá a un amigo</h2>
         <p id="lobby-status">Creá una partida para obtener tu enlace.</p>
         <button id="create-button" class="primary">CREAR PARTIDA</button>
+        
         <div id="invite-box" class="invite hidden">
           <label for="invite-link">Enlace de invitación</label>
           <input id="invite-link" readonly aria-label="Enlace de invitación" />
           <button id="copy-button" class="secondary">COPIAR ENLACE</button>
-          <small>Esperando a que el wachin entre… Vos jugás con el equipo verde.</small>
+          <small style="display: block; margin-top: 5px;">Esperando a que entre el rival… Vos jugás con el equipo verde.</small>
         </div>
+        
         <button class="back-button">← Volver</button>
       </section>
+
+      <!-- PANEL PRACTICAR / BOT -->
       <section id="practice" class="panel hidden">
         <p class="eyebrow">ENTRENAMIENTO</p>
         <h2>Elegí la dificultad</h2>
@@ -67,32 +77,38 @@
         <button class="difficulty-button goat" data-difficulty="goat">GOAT <small>Difícil</small></button>
         <button class="back-button">← Volver</button>
       </section>
+
+      <!-- PANEL PARTIDA / CANCHA -->
       <section id="match" class="hidden">
-      <div id="scoreboard">
-        <span class="score green" id="green-score">0</span>
-        <div style="text-align: center; line-height: 1.2;">
-          <span id="message">¡A jugar!</span><br>
-          <span id="timer-display" style="font-size: 14px; color: #a0b0b8;">03:00</span>
+        <div id="scoreboard">
+          <span class="score green" id="green-score">0</span>
+          <div style="text-align: center; line-height: 1.2;">
+            <span id="message">¡A jugar!</span><br>
+            <span id="timer-display" style="font-size: 14px; color: #a0b0b8;">03:00</span>
+          </div>
+          <span class="score blue" id="blue-score">0</span>
         </div>
-        <span class="score blue" id="blue-score">0</span>
-      </div>
+
         <canvas id="game" width="1000" height="600" aria-label="Cancha de Mini HaxBall"></canvas>
-<div id="touch-controls">
-  <div id="joystick-zone">
-    <div id="joystick-base">
-      <div id="joystick-stick"></div>
-    </div>
-  </div>
-  <div id="action-zone">
-    <button id="kick-button">PATEAR</button>
-  </div>
-</div>
-        <p id="message" class="message" aria-live="polite">¡A jugar!</p>
+
+        <!-- Mandos Táctiles -->
+        <div id="touch-controls">
+          <div id="joystick-zone">
+            <div id="joystick-base">
+              <div id="joystick-stick"></div>
+            </div>
+          </div>
+          <div id="action-zone">
+            <button id="kick-button">PATEAR</button>
+          </div>
+        </div>
+
         <section id="controls" class="controls"></section>
         <button class="back-button">← Salir al menú</button>
       </section>
     </main>
-    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+
+    <!-- Conexión con el juego -->
     <script src="game.js" defer></script>
   </body>
 </html>

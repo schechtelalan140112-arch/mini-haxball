@@ -1,6 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id), canvas = $("game"), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
 const field = { left:60,right:W-60,top:35,bottom:H-35,goalTop:215,goalBottom:385,depth:42 }, localKeys = new Set(), remoteKeys = new Set();
+let matchTimeLimit = 0, matchStartTime = 0, matchEnded = false, currentBallStyle = 0;
 let mode, peer, connection, localChannel, scores={green:0,blue:0}, kickoffUntil=0, lastTime=performance.now(), lastStateSent=0, lastInputSent=0, botDifficulty="beginner", botThinkAt=0, botTarget={x:730,y:H/2};
 const ball={x:W/2,y:H/2,vx:0,vy:0,r:13,mass:.75};
 const players=[
@@ -12,7 +13,24 @@ function show(id){["menu","lobby","practice","match"].forEach(x=>$(x).classList.
 function message(text){$("message").textContent=text;} function updateScore(){$("green-score").textContent=scores.green;$("blue-score").textContent=scores.blue;}
 function resetPositions(){Object.assign(ball,{x:W/2,y:H/2,vx:0,vy:0});Object.assign(players[0],{x:270,y:H/2,vx:0,vy:0});Object.assign(players[1],{x:730,y:H/2,vx:0,vy:0});}
 function setControls(){const c=$("controls");c.innerHTML=mode==="local"?'<p><span class="dot green-dot"></span><b>Verde:</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Azul:</b> Flechas · M para patear</p>':mode==="practice"?`<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Bot Azul:</b> ${botDifficulty==="beginner"?"Debutante":botDifficulty==="pro"?"Professional":"GOAT"}</p>`:mode==="host"?'<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span>Tu rival también usa WASD · X</p>':'<p><span class="dot blue-dot"></span><b>Vos (Azul):</b> WASD · X para patear</p><p><span class="dot green-dot"></span>Tu rival controla Verde</p>';}
-function startGame(next){mode=next;scores={green:0,blue:0};kickoffUntil=0;botThinkAt=0;const localBlue=next==="local";Object.assign(players[1],{controls:localBlue?["arrowup","arrowdown","arrowleft","arrowright"]:["w","s","a","d"],kick:localBlue?"m":"x",kickReady:true,maxSpeed:next==="practice"?botProfiles[botDifficulty].speed:410});resetPositions();updateScore();setControls();message("¡A jugar!");show("match");}
+function startGame(next){
+  mode=next;scores={green:0,blue:0};kickoffUntil=0;botThinkAt=0;
+  matchTimeLimit = parseInt($("time-input").value) || 0;
+  matchStartTime = performance.now();
+  matchEnded = false;
+  currentBallStyle = parseInt($("ball-style").value) || 0;
+  const myColor = $("my-color").value;
+
+  const localBlue=next==="local";
+  Object.assign(players[1],{controls:localBlue?["arrowup","arrowdown","arrowleft","arrowright"]:["w","s","a","d"],kick:localBlue?"m":"x",kickReady:true,maxSpeed:next==="practice"?botProfiles[botDifficulty].speed:410});
+  
+  if(mode === "guest") {
+    players[1].color = myColor; players[1].dark = myColor;
+  } else {
+    players[0].color = myColor; players[0].dark = myColor;
+  }
+  resetPositions();updateScore();setControls();message("¡A jugar!");show("match");
+}
 function closeNetwork(){if(connection)connection.close();if(peer)peer.destroy();if(localChannel)localChannel.close();connection=peer=localChannel=null;}
 function returnMenu(){closeNetwork();mode=null;localKeys.clear();remoteKeys.clear();history.replaceState({},"",location.pathname);show("menu");}
 $("local-button").onclick=()=>startGame("local");
@@ -26,7 +44,21 @@ function createMatch(){if(location.protocol==="file:"){const id=`local-${crypto.
 function joinMatch(id){if(!window.Peer){show("lobby");$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}show("lobby");$("create-button").classList.add("hidden");$("lobby-status").textContent="Conectando a la partida…";peer=new Peer();peer.on("open",()=>{connection=peer.connect(id,{reliable:true});configureConnection(false);});peer.on("error",()=>$("lobby-status").textContent="No fue posible conectar. Puede que la sala haya cerrado.");}
 function createLocalConnection(id,host){localChannel=new BroadcastChannel(`mini-haxball-${id}`);return{open:true,isLocalHost:host,send:data=>localChannel.postMessage(data),on:(event,callback)=>{if(event==="data")localChannel.addEventListener("message",e=>callback(e.data));if(event==="open"&&!host)queueMicrotask(callback);},close:()=>localChannel.close()};}
 function joinLocalMatch(id){show("lobby");$("create-button").classList.add("hidden");$("lobby-status").textContent="Entrando a la partida local…";connection=createLocalConnection(id,false);configureConnection(false);connection.send({type:"hello"});}
-function configureConnection(host){connection.on("open",()=>{if(host)startGame("host");else{mode="guest";setControls();show("match");message("Conectado. Esperando al anfitrión…");}});connection.on("data",data=>{if(data.type==="hello"&&connection?.isLocalHost&&mode!=="host")startGame("host");if(data.type==="input"&&mode==="host")data.down?remoteKeys.add(data.key):remoteKeys.delete(data.key);if(data.type==="inputState"&&mode==="host"){remoteKeys.clear();data.keys.forEach(key=>remoteKeys.add(key));}if(data.type==="state"&&mode==="guest")applyState(data);});connection.on("close",()=>{if(mode==="host"||mode==="guest")message("Tu rival se desconectó.");});connection.on("error",()=>message("Se perdió la conexión."));}
+function configureConnection(host){
+  connection.on("open",()=>{if(host)startGame("host");else{mode="guest";setControls();show("match");message("Conectado. Esperando al anfitrión…");}});
+  connection.on("data",data=>{
+    if(data.type==="hello"&&connection?.isLocalHost&&mode!=="host")startGame("host");
+    if(data.type==="input"&&mode==="host")data.down?remoteKeys.add(data.key):remoteKeys.delete(data.key);
+    if(data.type==="inputState"&&mode==="host"){
+      remoteKeys.clear();
+      data.keys.forEach(key=>remoteKeys.add(key));
+      if(data.color) { players[1].color = data.color; players[1].dark = data.color; }
+    }
+    if(data.type==="state"&&mode==="guest")applyState(data);
+  });
+  connection.on("close",()=>{if(mode==="host"||mode==="guest")message("Tu rival se desconectó.");});
+  connection.on("error",()=>message("Se perdió la conexión."));
+}
 const relevant=new Set(["w","a","s","d","x","arrowup","arrowdown","arrowleft","arrowright","m","r"]);
 window.addEventListener("keydown",e=>handleKey(e,true));window.addEventListener("keyup",e=>handleKey(e,false));window.addEventListener("blur",()=>localKeys.clear());
 function handleKey(e,down){const key=e.key.toLowerCase();if(!relevant.has(key))return;e.preventDefault();localKeys[down?"add":"delete"](key);if(mode==="guest"&&connection?.open&&["w","a","s","d","x"].includes(key))connection.send({type:"input",key,down});if(mode==="local"&&key==="r"&&down&&!e.repeat){scores={green:0,blue:0};updateScore();resetPositions();message("¡Marcador reiniciado!");}}
@@ -130,11 +162,143 @@ function collide(a,b,restitution=.72){let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,
 function updateBall(dt){ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;ball.vx*=Math.pow(.22,dt);ball.vy*=Math.pow(.22,dt);clamp(ball,780);const mouth=ball.y>field.goalTop&&ball.y<field.goalBottom;if(ball.y-ball.r<field.top){ball.y=field.top+ball.r;ball.vy=Math.abs(ball.vy)*.83;}if(ball.y+ball.r>field.bottom){ball.y=field.bottom-ball.r;ball.vy=-Math.abs(ball.vy)*.83;}if(!mouth&&ball.x-ball.r<field.left){ball.x=field.left+ball.r;ball.vx=Math.abs(ball.vx)*.83;}if(!mouth&&ball.x+ball.r>field.right){ball.x=field.right-ball.r;ball.vx=-Math.abs(ball.vx)*.83;}if(mouth&&ball.x+ball.r<field.left)score("blue");if(mouth&&ball.x-ball.r>field.right)score("green");}
 function score(team){if(kickoffUntil)return;scores[team]++;updateScore();message(`¡GOL DE ${team==="green"?"VERDE":"AZUL"}!`);kickoffUntil=performance.now()+1300;setTimeout(()=>{resetPositions();message("¡A jugar!");kickoffUntil=0;},1300);}
 function updateBot(now){const p=players[1],rival=players[0],profile=botProfiles[botDifficulty],goal={x:field.left-25,y:H/2};if(now>=botThinkAt){const gx=goal.x-ball.x,gy=goal.y-ball.y,gd=Math.hypot(gx,gy)||1,nearRival=Math.hypot(rival.x-ball.x,rival.y-ball.y)<120,side=nearRival?(rival.y<ball.y?1:-1):Math.sin(now/360)*.45;botTarget={x:ball.x-gx/gd*profile.offset,y:ball.y-gy/gd*profile.offset*.3+side*profile.dribble};botTarget.x=Math.max(field.left+p.r,Math.min(field.right-p.r,botTarget.x));botTarget.y=Math.max(field.top+p.r,Math.min(field.bottom-p.r,botTarget.y));botThinkAt=now+profile.reaction;}remoteKeys.clear();if(botTarget.x<p.x-9)remoteKeys.add("a");if(botTarget.x>p.x+9)remoteKeys.add("d");if(botTarget.y<p.y-9)remoteKeys.add("w");if(botTarget.y>p.y+9)remoteKeys.add("s");const close=Math.hypot(ball.x-p.x,ball.y-p.y)<p.r+ball.r+42,behindBall=p.x>ball.x-8;if(close&&behindBall)remoteKeys.add("x");}
-function update(dt,now){if(mode==="guest"){if(connection?.open&&now-lastInputSent>33){connection.send({type:"inputState",keys:[...localKeys].filter(key=>["w","a","s","d","x"].includes(key))});lastInputSent=now;}return;}if(!mode||kickoffUntil)return;if(mode==="practice")updateBot(now);updatePlayer(players[0],dt,localKeys);updatePlayer(players[1],dt,mode==="local"?localKeys:remoteKeys);collide(players[0],players[1],.5);players.forEach(p=>collide(p,ball));updateBall(dt);if(mode==="host"&&connection?.open&&now-lastStateSent>33){connection.send({type:"state",ball:{...ball},players:players.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy})),scores,message:$("message").textContent});lastStateSent=now;}}
-function applyState(s){Object.assign(ball,s.ball);s.players.forEach((p,i)=>Object.assign(players[i],p));scores=s.scores;updateScore();message(s.message);}
+function updateTimerDisplay(ms) {
+    if (ms < 0) { $("timer-display").textContent = "∞"; return; }
+    let totalSec = Math.ceil(ms / 1000);
+    let m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    let s = (totalSec % 60).toString().padStart(2, '0');
+    $("timer-display").textContent = `${m}:${s}`;
+}
+
+function update(dt,now){
+  if(mode==="guest"){
+    if(connection?.open&&now-lastInputSent>33){
+      connection.send({
+        type:"inputState",
+        keys:[...localKeys].filter(key=>["w","a","s","d","x"].includes(key)),
+        color: $("my-color").value
+      });
+      lastInputSent=now;
+    }
+    return;
+  }
+  
+  if(!mode||kickoffUntil||matchEnded)return;
+
+  let timeLeftMs = -1;
+  if (matchTimeLimit > 0) {
+     timeLeftMs = matchTimeLimit * 60000 - (now - matchStartTime);
+     updateTimerDisplay(timeLeftMs);
+     if (timeLeftMs <= 0) {
+         matchEnded = true;
+         message("¡TIEMPO AGOTADO!");
+         updateTimerDisplay(0);
+         setTimeout(() => returnMenu(), 4000);
+         return;
+     }
+  } else {
+     updateTimerDisplay(-1);
+  }
+
+  if(mode==="practice")updateBot(now);
+  updatePlayer(players[0],dt,localKeys);
+  updatePlayer(players[1],dt,mode==="local"?localKeys:remoteKeys);
+  collide(players[0],players[1],.5);
+  players.forEach(p=>collide(p,ball));
+  updateBall(dt);
+  
+  if(mode==="host"&&connection?.open&&now-lastStateSent>33){
+    connection.send({
+      type:"state",
+      ball:{...ball},
+      players:players.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,color:p.color})),
+      scores, message:$("message").textContent, timeLeft: timeLeftMs, ballStyle: currentBallStyle
+    });
+    lastStateSent=now;
+  }
+}
+
+function applyState(s){
+  Object.assign(ball,s.ball);
+  s.players.forEach((p,i)=>{
+    players[i].x = p.x; players[i].y = p.y; 
+    players[i].vx = p.vx; players[i].vy = p.vy;
+    players[i].color = p.color; players[i].dark = p.color;
+  });
+  scores=s.scores; updateScore(); message(s.message);
+  currentBallStyle = s.ballStyle;
+  updateTimerDisplay(s.timeLeft);
+}
 function line(x1,y1,x2,y2){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
 function drawField(){ctx.clearRect(0,0,W,H);ctx.fillStyle="#2e9a55";ctx.fillRect(0,0,W,H);ctx.fillStyle="rgba(255,255,255,.035)";for(let x=field.left;x<field.right;x+=100)ctx.fillRect(x,field.top,50,field.bottom-field.top);ctx.strokeStyle="rgba(255,255,255,.9)";ctx.lineWidth=4;ctx.strokeRect(field.left,field.top,field.right-field.left,field.bottom-field.top);line(W/2,field.top,W/2,field.bottom);ctx.beginPath();ctx.arc(W/2,H/2,84,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.arc(W/2,H/2,5,0,Math.PI*2);ctx.fillStyle="white";ctx.fill();ctx.strokeStyle="rgba(245,250,255,.9)";ctx.lineWidth=4;ctx.strokeRect(field.left-field.depth,field.goalTop,field.depth,field.goalBottom-field.goalTop);ctx.strokeRect(field.right,field.goalTop,field.depth,field.goalBottom-field.goalTop);}
 function drawPlayer(p){ctx.save();ctx.translate(p.x,p.y);ctx.beginPath();ctx.arc(2,4,p.r,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.18)";ctx.fill();ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();ctx.strokeStyle=p.dark;ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.arc(-7,-8,7,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.32)";ctx.fill();ctx.restore();}
-function drawBall(){ctx.beginPath();ctx.arc(ball.x+2,ball.y+3,ball.r,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.22)";ctx.fill();ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle="#f8f8f3";ctx.fill();ctx.strokeStyle="#37444a";ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.arc(ball.x,ball.y,4.5,0,Math.PI*2);ctx.fillStyle="#334047";ctx.fill();}
-function loop(now){const dt=Math.min((now-lastTime)/1000,.025);lastTime=now;update(dt,now);drawField();players.forEach(drawPlayer);drawBall();requestAnimationFrame(loop);}
+function drawBall() {
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  
+  ctx.beginPath();
+  ctx.arc(2, 3, ball.r, 0, Math.PI*2);
+  ctx.fillStyle="rgba(0,0,0,.22)";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(0, 0, ball.r, 0, Math.PI*2);
+  
+  switch(currentBallStyle) {
+    case 1: 
+      ctx.fillStyle = "#e31010"; ctx.fill();
+      ctx.fillStyle = "#111"; ctx.fillRect(-ball.r, 0, ball.r*2, ball.r); 
+      ctx.strokeStyle = "#fff";
+      break;
+    case 2: 
+      ctx.fillStyle = "#75aadb"; ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.fillRect(-ball.r, -ball.r/3, ball.r*2, ball.r/1.5); 
+      ctx.strokeStyle = "#e8b031"; 
+      break;
+    case 3: 
+      ctx.fillStyle = "#ff4500"; ctx.fill();
+      ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(0,0,ball.r/1.8,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = "#8b0000";
+      break;
+    case 4: 
+      ctx.fillStyle = "#0ff"; ctx.fill();
+      ctx.strokeStyle = "#f0f"; ctx.lineWidth = 3;
+      break;
+    case 5: 
+      ctx.fillStyle = "#ffd700"; ctx.fill();
+      ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
+      break;
+    case 6: 
+      ctx.fillStyle = "#ccff00"; ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(-7, -7, 10, 0, Math.PI/2); ctx.stroke(); 
+      break;
+    case 7: 
+      ctx.fillStyle = "#ff6600"; ctx.fill();
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, -ball.r); ctx.lineTo(0, ball.r); ctx.stroke(); 
+      ctx.beginPath(); ctx.moveTo(-ball.r, 0); ctx.lineTo(ball.r, 0); ctx.stroke();
+      break;
+    case 8: 
+      ctx.fillStyle = "#ff3333"; ctx.fill();
+      ctx.strokeStyle = "#33cc33"; ctx.lineWidth = 4;
+      ctx.fillStyle = "#111"; ctx.fillRect(-2, -2, 4, 4); 
+      break;
+    case 9: 
+      ctx.fillStyle = "#222"; ctx.fill();
+      ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
+      break;
+    default: 
+      ctx.fillStyle = "#f8f8f3"; ctx.fill();
+      ctx.strokeStyle = "#37444a"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,4.5,0,Math.PI*2); ctx.fillStyle="#334047"; ctx.fill();
+      break;
+  }
+  
+  if(currentBallStyle !== 4 && currentBallStyle !== 7) {
+      ctx.lineWidth = 2;
+      ctx.stroke();
+  }
+  ctx.restore();
+}
 const joinId=new URLSearchParams(location.search).get("join");if(joinId)joinId.startsWith("local-")?joinLocalMatch(joinId):joinMatch(joinId);else show("menu");requestAnimationFrame(loop);

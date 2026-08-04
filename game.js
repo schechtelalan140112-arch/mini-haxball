@@ -10,13 +10,12 @@ const players=[
 ];
 const botProfiles={beginner:{speed:190,reaction:540,offset:58,dribble:10},pro:{speed:300,reaction:230,offset:46,dribble:24},goat:{speed:410,reaction:70,offset:35,dribble:42}};
 
-function show(id){["menu","lobby","practice","match"].forEach(x=>$(x).classList.toggle("hidden",x!==id));}
-function message(text){$("message").textContent=text;} 
-function updateScore(){$("green-score").textContent=scores.green;$("blue-score").textContent=scores.blue;}
+function show(id){["menu","lobby","practice","match"].forEach(x=>{if($(x))$(x).classList.toggle("hidden",x!==id);});}
+function message(text){if($("message"))$("message").textContent=text;} 
+function updateScore(){if($("green-score"))$("green-score").textContent=scores.green;if($("blue-score"))$("blue-score").textContent=scores.blue;}
 function resetPositions(){Object.assign(ball,{x:W/2,y:H/2,vx:0,vy:0});Object.assign(players[0],{x:270,y:H/2,vx:0,vy:0});Object.assign(players[1],{x:730,y:H/2,vx:0,vy:0});}
-function setControls(){const c=$("controls");c.innerHTML=mode==="local"?'<p><span class="dot green-dot"></span><b>Verde:</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Azul:</b> Flechas · M para patear</p>':mode==="practice"?`<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Bot Azul:</b> ${botDifficulty==="beginner"?"Debutante":botDifficulty==="pro"?"Professional":"GOAT"}</p>`:mode==="host"?'<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span>Tu rival también usa WASD · X</p>':'<p><span class="dot blue-dot"></span><b>Vos (Azul):</b> WASD · X para patear</p><p><span class="dot green-dot"></span>Tu rival controla Verde</p>';}
+function setControls(){const c=$("controls");if(!c)return;c.innerHTML=mode==="local"?'<p><span class="dot green-dot"></span><b>Verde:</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Azul:</b> Flechas · M para patear</p>':mode==="practice"?`<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span><b>Bot Azul:</b> ${botDifficulty==="beginner"?"Debutante":botDifficulty==="pro"?"Professional":"GOAT"}</p>`:mode==="host"?'<p><span class="dot green-dot"></span><b>Vos (Verde):</b> WASD · X para patear</p><p><span class="dot blue-dot"></span>Tu rival también usa WASD · X</p>':'<p><span class="dot blue-dot"></span><b>Vos (Azul):</b> WASD · X para patear</p><p><span class="dot green-dot"></span>Tu rival controla Verde</p>';}
 
-// Seguros para variables de conexión
 window.lastInputSent = window.lastInputSent || 0;
 window.lastStateSent = window.lastStateSent || 0;
 
@@ -72,54 +71,40 @@ function startGame(next){
 
 function closeNetwork(){if(connection)connection.close();if(peer)peer.destroy();if(localChannel)localChannel.close();connection=peer=localChannel=null;}
 function returnMenu(){closeNetwork();mode=null;localKeys.clear();remoteKeys.clear();history.replaceState({},"",location.pathname);show("menu");}
-function initEvents() {
-  const safeBind = (id, fn) => {
-    const el = $(id);
-    if (el) el.onclick = fn;
+
+function createMatch(){
+  if(location.protocol==="file:"){
+    const id=`local-${crypto.randomUUID()}`,url=new URL(location.href);
+    url.search="";url.searchParams.set("join",id);
+    if($("invite-link"))$("invite-link").value=url.toString();
+    if($("invite-box"))$("invite-box").classList.remove("hidden");
+    if($("lobby-status"))$("lobby-status").textContent="Sala local creada. Abrí este enlace en otra pestaña.";
+    connection=createLocalConnection(id,true);
+    configureConnection(true);
+    return;
+  }
+  if(!window.Peer){if($("lobby-status"))$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}
+  if($("create-button"))$("create-button").disabled=true;
+  if($("lobby-status"))$("lobby-status").textContent="Creando tu sala…";
+  peer=new Peer();
+  peer.on("open",id=>{
+    const url=new URL(location.href);url.search="";url.searchParams.set("join",id);
+    if($("invite-link"))$("invite-link").value=url.toString();
+    if($("invite-box"))$("invite-box").classList.remove("hidden");
+    if($("lobby-status"))$("lobby-status").textContent="Sala creada. Compartí el enlace.";
+  });
+  peer.on("connection",conn=>{if(connection)return conn.close();connection=conn;configureConnection(true);});
+  peer.on("error",()=>{if($("lobby-status"))$("lobby-status").textContent="No se pudo crear la sala. Intentá nuevamente.";if($("create-button"))$("create-button").disabled=false;});
+}
+
+function createLocalConnection(id,host){
+  localChannel=new BroadcastChannel(`mini-haxball-${id}`);
+  return{
+    open:true,isLocalHost:host,send:data=>localChannel.postMessage(data),
+    on:(event,callback)=>{if(event==="data")localChannel.addEventListener("message",e=>callback(e.data));if(event==="open"&&!host)queueMicrotask(callback);},
+    close:()=>localChannel.close()
   };
-
-  safeBind("local-button", () => startGame("local"));
-  safeBind("online-button", () => {
-    show("lobby");
-    if ($("lobby-status")) $("lobby-status").textContent = "Creá una partida para obtener tu enlace.";
-    if ($("create-button")) {
-      $("create-button").disabled = false;
-      $("create-button").classList.remove("hidden");
-    }
-    if ($("invite-box")) $("invite-box").classList.add("hidden");
-  });
-  safeBind("practice-button", () => show("practice"));
-  safeBind("create-button", createMatch);
-  safeBind("copy-button", async () => {
-    try {
-      if ($("invite-link")) await navigator.clipboard.writeText($("invite-link").value);
-      if ($("copy-button")) {
-        $("copy-button").textContent = "¡ENLACE COPIADO!";
-        setTimeout(() => $("copy-button").textContent = "COPIAR ENLACE", 1400);
-      }
-    } catch {
-      if ($("invite-link")) { $("invite-link").select(); document.execCommand("copy"); }
-    }
-  });
-
-  document.querySelectorAll(".difficulty-button").forEach(b => {
-    b.onclick = () => { botDifficulty = b.dataset.difficulty; startGame("practice"); };
-  });
-  
-  document.querySelectorAll(".back-button").forEach(b => b.onclick = returnMenu);
 }
-
-// Asegura que los botones se enganchen solo cuando el HTML ya existe
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initEvents);
-} else {
-  initEvents();
-}
-
-function createMatch(){if(location.protocol==="file:"){const id=`local-${crypto.randomUUID()}`,url=new URL(location.href);url.search="";url.searchParams.set("join",id);$("invite-link").value=url.toString();$("invite-box").classList.remove("hidden");$("lobby-status").textContent="Sala local creada. Abrí este enlace en otra pestaña.";connection=createLocalConnection(id,true);configureConnection(true);return;}if(!window.Peer){$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}$("create-button").disabled=true;$("lobby-status").textContent="Creando tu sala…";peer=new Peer();peer.on("open",id=>{const url=new URL(location.href);url.search="";url.searchParams.set("join",id);$("invite-link").value=url.toString();$("invite-box").classList.remove("hidden");$("lobby-status").textContent="Sala creada. Compartí el enlace.";});peer.on("connection",conn=>{if(connection)return conn.close();connection=conn;configureConnection(true);});peer.on("error",()=>{$("lobby-status").textContent="No se pudo crear la sala. Intentá nuevamente.";$("create-button").disabled=false;});}
-function joinMatch(id){if(!window.Peer){show("lobby");$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}show("lobby");$("create-button").classList.add("hidden");$("lobby-status").textContent="Conectando a la partida…";peer=new Peer();peer.on("open",()=>{connection=peer.connect(id,{reliable:true});configureConnection(false);});peer.on("error",()=>$("lobby-status").textContent="No fue posible conectar. Puede que la sala haya cerrado.");}
-function createLocalConnection(id,host){localChannel=new BroadcastChannel(`mini-haxball-${id}`);return{open:true,isLocalHost:host,send:data=>localChannel.postMessage(data),on:(event,callback)=>{if(event==="data")localChannel.addEventListener("message",e=>callback(e.data));if(event==="open"&&!host)queueMicrotask(callback);},close:()=>localChannel.close()};}
-function joinLocalMatch(id){show("lobby");$("create-button").classList.add("hidden");$("lobby-status").textContent="Entrando a la partida local…";connection=createLocalConnection(id,false);configureConnection(false);connection.send({type:"hello"});}
 
 function configureConnection(host){
   connection.on("open",()=>{if(host)startGame("host");else{mode="guest";setControls();show("match");message("Conectado. Esperando al anfitrión…");}});
@@ -138,101 +123,112 @@ function configureConnection(host){
 }
 
 const relevant=new Set(["w","a","s","d","x","arrowup","arrowdown","arrowleft","arrowright","m","r"]);
-window.addEventListener("keydown",e=>handleKey(e,true));window.addEventListener("keyup",e=>handleKey(e,false));window.addEventListener("blur",()=>localKeys.clear());
-function handleKey(e,down){const key=e.key.toLowerCase();if(!relevant.has(key))return;e.preventDefault();localKeys[down?"add":"delete"](key);if(mode==="guest"&&connection?.open&&["w","a","s","d","x"].includes(key))connection.send({type:"input",key,down});if(mode==="local"&&key==="r"&&down&&!e.repeat){scores={green:0,blue:0};updateScore();resetPositions();message("¡Marcador reiniciado!");}}
+window.addEventListener("keydown",e=>handleKey(e,true));
+window.addEventListener("keyup",e=>handleKey(e,false));
+window.addEventListener("blur",()=>localKeys.clear());
 
-/* LÓGICA DEL JOYSTICK Y BOTÓN PATEAR */
-const joystickZone = $("joystick-zone"), joystickStick = $("joystick-stick"), kickBtn = $("kick-button");
-let joystickActive = false, touchId = null, joystickCenter = { x: 0, y: 0 };
-
-if (joystickZone) {
-  joystickZone.addEventListener("touchstart", e => {
-    e.preventDefault();
-    const touch = e.changedTouches[0];
-    touchId = touch.identifier;
-    joystickActive = true;
-    const rect = joystickZone.getBoundingClientRect();
-    joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    updateJoystick(touch);
-  }, { passive: false });
-
-  window.addEventListener("touchmove", e => {
-    if (!joystickActive) return;
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === touchId) {
-        updateJoystick(e.touches[i]);
-        break;
-      }
-    }
-  }, { passive: false });
-
-  const endJoystick = e => {
-    if (!joystickActive) return;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === touchId) {
-        joystickActive = false;
-        touchId = null;
-        joystickStick.style.transform = `translate(0px, 0px)`;
-        ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
-        break;
-      }
-    }
-  };
-
-  window.addEventListener("touchend", endJoystick);
-  window.addEventListener("touchcancel", endJoystick);
+function handleKey(e,down){
+  const key=e.key.toLowerCase();
+  if(!relevant.has(key))return;
+  e.preventDefault();
+  localKeys[down?"add":"delete"](key);
+  if(mode==="guest"&&connection?.open&&["w","a","s","d","x"].includes(key))connection.send({type:"input",key,down});
+  if(mode==="local"&&key==="r"&&down&&!e.repeat){scores={green:0,blue:0};updateScore();resetPositions();message("¡Marcador reiniciado!");}
 }
 
-function updateJoystick(touch) {
-  const dx = touch.clientX - joystickCenter.x;
-  const dy = touch.clientY - joystickCenter.y;
-  const dist = Math.hypot(dx, dy);
-  const maxRadius = 40;
-  const angle = Math.atan2(dy, dx);
-  
-  const clampedDist = Math.min(dist, maxRadius);
-  const stickX = Math.cos(angle) * clampedDist;
-  const stickY = Math.sin(angle) * clampedDist;
-  
-  joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
+function initTouchControls() {
+  const joystickZone = $("joystick-zone"), joystickStick = $("joystick-stick"), kickBtn = $("kick-button");
+  let joystickActive = false, touchId = null, joystickCenter = { x: 0, y: 0 };
 
-  const deadzone = 10;
-  if (dist < deadzone) {
-    ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
-    return;
+  if (joystickZone) {
+    joystickZone.addEventListener("touchstart", e => {
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      touchId = touch.identifier;
+      joystickActive = true;
+      const rect = joystickZone.getBoundingClientRect();
+      joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      updateJoystick(touch);
+    }, { passive: false });
+
+    window.addEventListener("touchmove", e => {
+      if (!joystickActive) return;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === touchId) {
+          updateJoystick(e.touches[i]);
+          break;
+        }
+      }
+    }, { passive: false });
+
+    const endJoystick = e => {
+      if (!joystickActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === touchId) {
+          joystickActive = false;
+          touchId = null;
+          if (joystickStick) joystickStick.style.transform = `translate(0px, 0px)`;
+          ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
+          break;
+        }
+      }
+    };
+
+    window.addEventListener("touchend", endJoystick);
+    window.addEventListener("touchcancel", endJoystick);
   }
 
-  if (dx < -10) localKeys.add("a"); else localKeys.delete("a");
-  if (dx > 10) localKeys.add("d"); else localKeys.delete("d");
-  if (dy < -10) localKeys.add("w"); else localKeys.delete("w");
-  if (dy > 10) localKeys.add("s"); else localKeys.delete("s");
+  function updateJoystick(touch) {
+    const dx = touch.clientX - joystickCenter.x;
+    const dy = touch.clientY - joystickCenter.y;
+    const dist = Math.hypot(dx, dy);
+    const maxRadius = 40;
+    const angle = Math.atan2(dy, dx);
+    
+    const clampedDist = Math.min(dist, maxRadius);
+    const stickX = Math.cos(angle) * clampedDist;
+    const stickY = Math.sin(angle) * clampedDist;
+    
+    if (joystickStick) joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
 
-  if (mode === "guest" && connection?.open) {
-    ["w", "a", "s", "d"].forEach(key => {
-      connection.send({ type: "input", key, down: localKeys.has(key) });
-    });
+    const deadzone = 10;
+    if (dist < deadzone) {
+      ["w", "a", "s", "d"].forEach(k => localKeys.delete(k));
+      return;
+    }
+
+    if (dx < -10) localKeys.add("a"); else localKeys.delete("a");
+    if (dx > 10) localKeys.add("d"); else localKeys.delete("d");
+    if (dy < -10) localKeys.add("w"); else localKeys.delete("w");
+    if (dy > 10) localKeys.add("s"); else localKeys.delete("s");
+
+    if (mode === "guest" && connection?.open) {
+      ["w", "a", "s", "d"].forEach(key => {
+        connection.send({ type: "input", key, down: localKeys.has(key) });
+      });
+    }
   }
-}
 
-if (kickBtn) {
-  kickBtn.addEventListener("touchstart", e => {
-    e.preventDefault();
-    localKeys.add("x");
-    if (mode === "guest" && connection?.open) {
-      connection.send({ type: "input", key: "x", down: true });
-    }
-  }, { passive: false });
+  if (kickBtn) {
+    kickBtn.addEventListener("touchstart", e => {
+      e.preventDefault();
+      localKeys.add("x");
+      if (mode === "guest" && connection?.open) {
+        connection.send({ type: "input", key: "x", down: true });
+      }
+    }, { passive: false });
 
-  const releaseKick = e => {
-    e.preventDefault();
-    localKeys.delete("x");
-    if (mode === "guest" && connection?.open) {
-      connection.send({ type: "input", key: "x", down: false });
-    }
-  };
+    const releaseKick = e => {
+      e.preventDefault();
+      localKeys.delete("x");
+      if (mode === "guest" && connection?.open) {
+        connection.send({ type: "input", key: "x", down: false });
+      }
+    };
 
-  kickBtn.addEventListener("touchend", releaseKick);
-  kickBtn.addEventListener("touchcancel", releaseKick);
+    kickBtn.addEventListener("touchend", releaseKick);
+    kickBtn.addEventListener("touchcancel", releaseKick);
+  }
 }
 
 function clamp(body,max){const s=Math.hypot(body.vx,body.vy);if(s>max){body.vx=body.vx/s*max;body.vy=body.vy/s*max;}}
@@ -413,8 +409,42 @@ function drawBall() {
   } catch(e) { console.error("Error en drawBall:", e); }
 }
 
-/* BUCLE PRINCIPAL DEL JUEGO (GAME LOOP) */
-let lastTime = performance.now();
+function initEvents() {
+  const safeBind = (id, fn) => {
+    const el = $(id);
+    if (el) el.onclick = fn;
+  };
+
+  safeBind("local-button", () => startGame("local"));
+  safeBind("online-button", () => {
+    show("lobby");
+    if ($("lobby-status")) $("lobby-status").textContent = "Creá una partida para obtener tu enlace.";
+    if ($("create-button")) {
+      $("create-button").disabled = false;
+      $("create-button").classList.remove("hidden");
+    }
+    if ($("invite-box")) $("invite-box").classList.add("hidden");
+  });
+  safeBind("practice-button", () => show("practice"));
+  safeBind("create-button", createMatch);
+  safeBind("copy-button", async () => {
+    try {
+      if ($("invite-link")) await navigator.clipboard.writeText($("invite-link").value);
+      if ($("copy-button")) {
+        $("copy-button").textContent = "¡ENLACE COPIADO!";
+        setTimeout(() => $("copy-button").textContent = "COPIAR ENLACE", 1400);
+      }
+    } catch {
+      if ($("invite-link")) { $("invite-link").select(); document.execCommand("copy"); }
+    }
+  });
+
+  document.querySelectorAll(".difficulty-button").forEach(b => {
+    b.onclick = () => { botDifficulty = b.dataset.difficulty; startGame("practice"); };
+  });
+  
+  document.querySelectorAll(".back-button").forEach(b => b.onclick = returnMenu);
+}
 
 function loop(now) {
   const dt = Math.min((now - (lastTime || now)) / 1000, 0.1);
@@ -422,8 +452,6 @@ function loop(now) {
 
   try {
     if (typeof update === 'function') update(dt, now);
-    
-    // Dibujo de la escena
     if (typeof drawField === 'function') drawField();
     if (typeof players !== 'undefined') players.forEach(p => drawPlayer(p));
     if (typeof drawBall === 'function') drawBall();
@@ -434,5 +462,14 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-// Arranca el bucle
-requestAnimationFrame(loop);
+function init() {
+  initEvents();
+  initTouchControls();
+  requestAnimationFrame(loop);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

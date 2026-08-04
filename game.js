@@ -377,3 +377,30 @@ function drawBall() {
     ctx.restore();
   } catch(e) { console.error("Error en drawBall:", e); }
 }
+/* BUCLE PRINCIPAL DEL JUEGO (GAME LOOP) */
+let lastTime = performance.now();
+
+function loop(now) {
+  const dt = Math.min((now - (lastTime || now)) / 1000, 0.1);
+  lastTime = now;
+
+  try {
+    if (typeof update === 'function') update(dt, now);
+    
+    // Dibuja la cancha, jugadores y pelota
+    if (typeof draw === 'function') {
+      draw();
+    } else {
+      if (typeof drawPitch === 'function') drawPitch();
+      if (typeof drawPlayers === 'function') drawPlayers();
+      if (typeof drawBall === 'function') drawBall();
+    }
+  } catch (e) {
+    console.error("Error en loop:", e);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// Arranca el bucle
+requestAnimationFrame(loop);

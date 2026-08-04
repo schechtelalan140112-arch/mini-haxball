@@ -2,28 +2,128 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Juego</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Mini Haxball</title>
   <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
     body {
       margin: 0;
-      background: #000;
+      padding: 0;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: Arial, sans-serif;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
-      height: 100vh;
+      justify-content: center;
+      min-height: 100vh;
       overflow: hidden;
     }
+    #game-container {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #scoreboard {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 800px;
+      max-width: 95vw;
+      background: #222;
+      padding: 10px 20px;
+      border-radius: 8px 8px 0 0;
+      font-weight: bold;
+      font-size: 18px;
+      border: 2px solid #444;
+      border-bottom: none;
+    }
+    .red-text { color: #ff4d4d; }
+    .blue-text { color: #4d94ff; }
     canvas {
-      background: #111;
+      background: #55a630;
+      border: 2px solid #444;
+      max-width: 95vw;
+      max-height: 70vh;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    /* Controles táctiles en pantalla */
+    #touch-controls {
+      display: none;
+      width: 800px;
+      max-width: 95vw;
+      margin-top: 15px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .touch-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      border-radius: 50%;
+      width: 55px;
+      height: 55px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      touch-action: manipulation;
+    }
+    .touch-btn:active {
+      background: rgba(255, 255, 255, 0.5);
+    }
+    #dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 50px);
+      grid-template-rows: repeat(3, 50px);
+      gap: 5px;
+    }
+    #btn-kick {
+      width: 75px;
+      height: 75px;
+      background: rgba(255, 77, 77, 0.4);
+      border-color: #ff4d4d;
+      font-size: 14px;
+    }
+    @media (pointer: coarse) {
+      #touch-controls {
+        display: flex;
+      }
     }
   </style>
 </head>
 <body>
 
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="game-container">
+    <div id="scoreboard">
+      <div class="red-text">ROJO: <span id="score-red">0</span></div>
+      <div id="timer">03:00</div>
+      <div class="blue-text">AZUL: <span id="score-blue">0</span></div>
+    </div>
+    
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
 
-  <!-- type="module" aisla el archivo y evita choque de variables en el navegador -->
+    <div id="touch-controls">
+      <div id="dpad">
+        <div></div>
+        <div class="touch-btn" id="btn-up">▲</div>
+        <div></div>
+        <div class="touch-btn" id="btn-left">◄</div>
+        <div></div>
+        <div class="touch-btn" id="btn-right">►</div>
+        <div></div>
+        <div class="touch-btn" id="btn-down">▼</div>
+        <div></div>
+      </div>
+      <div class="touch-btn" id="btn-kick">PATEAR</div>
+    </div>
+  </div>
+
   <script type="module" src="game.js"></script>
 </body>
 </html>

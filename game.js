@@ -72,13 +72,49 @@ function startGame(next){
 
 function closeNetwork(){if(connection)connection.close();if(peer)peer.destroy();if(localChannel)localChannel.close();connection=peer=localChannel=null;}
 function returnMenu(){closeNetwork();mode=null;localKeys.clear();remoteKeys.clear();history.replaceState({},"",location.pathname);show("menu");}
-$("local-button").onclick=()=>startGame("local");
-$("online-button").onclick=()=>{show("lobby");$("lobby-status").textContent="Creá una partida para obtener tu enlace.";$("create-button").disabled=false;$("create-button").classList.remove("hidden");$("invite-box").classList.add("hidden");};
-$("practice-button").onclick=()=>show("practice");
-document.querySelectorAll(".difficulty-button").forEach(button=>button.onclick=()=>{botDifficulty=button.dataset.difficulty;startGame("practice");});
-document.querySelectorAll(".back-button").forEach(b=>b.onclick=returnMenu);
-$("create-button").onclick=createMatch;
-$("copy-button").onclick=async()=>{try{await navigator.clipboard.writeText($("invite-link").value);$("copy-button").textContent="¡ENLACE COPIADO!";setTimeout(()=>$("copy-button").textContent="COPIAR ENLACE",1400);}catch{$("invite-link").select();document.execCommand("copy");}};
+function initEvents() {
+  const safeBind = (id, fn) => {
+    const el = $(id);
+    if (el) el.onclick = fn;
+  };
+
+  safeBind("local-button", () => startGame("local"));
+  safeBind("online-button", () => {
+    show("lobby");
+    if ($("lobby-status")) $("lobby-status").textContent = "Creá una partida para obtener tu enlace.";
+    if ($("create-button")) {
+      $("create-button").disabled = false;
+      $("create-button").classList.remove("hidden");
+    }
+    if ($("invite-box")) $("invite-box").classList.add("hidden");
+  });
+  safeBind("practice-button", () => show("practice"));
+  safeBind("create-button", createMatch);
+  safeBind("copy-button", async () => {
+    try {
+      if ($("invite-link")) await navigator.clipboard.writeText($("invite-link").value);
+      if ($("copy-button")) {
+        $("copy-button").textContent = "¡ENLACE COPIADO!";
+        setTimeout(() => $("copy-button").textContent = "COPIAR ENLACE", 1400);
+      }
+    } catch {
+      if ($("invite-link")) { $("invite-link").select(); document.execCommand("copy"); }
+    }
+  });
+
+  document.querySelectorAll(".difficulty-button").forEach(b => {
+    b.onclick = () => { botDifficulty = b.dataset.difficulty; startGame("practice"); };
+  });
+  
+  document.querySelectorAll(".back-button").forEach(b => b.onclick = returnMenu);
+}
+
+// Asegura que los botones se enganchen solo cuando el HTML ya existe
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initEvents);
+} else {
+  initEvents();
+}
 
 function createMatch(){if(location.protocol==="file:"){const id=`local-${crypto.randomUUID()}`,url=new URL(location.href);url.search="";url.searchParams.set("join",id);$("invite-link").value=url.toString();$("invite-box").classList.remove("hidden");$("lobby-status").textContent="Sala local creada. Abrí este enlace en otra pestaña.";connection=createLocalConnection(id,true);configureConnection(true);return;}if(!window.Peer){$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}$("create-button").disabled=true;$("lobby-status").textContent="Creando tu sala…";peer=new Peer();peer.on("open",id=>{const url=new URL(location.href);url.search="";url.searchParams.set("join",id);$("invite-link").value=url.toString();$("invite-box").classList.remove("hidden");$("lobby-status").textContent="Sala creada. Compartí el enlace.";});peer.on("connection",conn=>{if(connection)return conn.close();connection=conn;configureConnection(true);});peer.on("error",()=>{$("lobby-status").textContent="No se pudo crear la sala. Intentá nuevamente.";$("create-button").disabled=false;});}
 function joinMatch(id){if(!window.Peer){show("lobby");$("lobby-status").textContent="No se pudo cargar la conexión. Revisá tu internet.";return;}show("lobby");$("create-button").classList.add("hidden");$("lobby-status").textContent="Conectando a la partida…";peer=new Peer();peer.on("open",()=>{connection=peer.connect(id,{reliable:true});configureConnection(false);});peer.on("error",()=>$("lobby-status").textContent="No fue posible conectar. Puede que la sala haya cerrado.");}

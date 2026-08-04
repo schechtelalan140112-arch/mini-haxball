@@ -20,16 +20,58 @@ function startGame(next){
   matchEnded = false;
   currentBallStyle = parseInt($("ball-style").value) || 0;
   const myColor = $("my-color").value;
+// Seguros para variables de conexión
+window.lastInputSent = window.lastInputSent || 0;
+window.lastStateSent = window.lastStateSent || 0;
 
-  const localBlue=next==="local";
-  Object.assign(players[1],{controls:localBlue?["arrowup","arrowdown","arrowleft","arrowright"]:["w","s","a","d"],kick:localBlue?"m":"x",kickReady:true,maxSpeed:next==="practice"?botProfiles[botDifficulty].speed:410});
-  
-  if(mode === "guest") {
-    players[1].color = myColor; players[1].dark = myColor;
-  } else {
-    players[0].color = myColor; players[0].dark = myColor;
-  }
-  resetPositions();updateScore();setControls();message("¡A jugar!");show("match");
+function startGame(next){
+  try {
+    mode=next;
+    if(typeof scores !== 'undefined') scores={green:0,blue:0};
+    if(typeof kickoffUntil !== 'undefined') kickoffUntil=0;
+    if(typeof botThinkAt !== 'undefined') botThinkAt=0;
+    
+    const timeInput = document.getElementById("time-input");
+    matchTimeLimit = timeInput ? parseInt(timeInput.value) || 0 : 0;
+    matchStartTime = performance.now();
+    matchEnded = false;
+    
+    const ballInput = document.getElementById("ball-style");
+    currentBallStyle = ballInput ? parseInt(ballInput.value) || 0 : 0;
+    
+    const colorInput = document.getElementById("my-color");
+    const myColor = colorInput ? colorInput.value : "#45df6a";
+
+    const localBlue = next === "local";
+    let limitSpeed = 410;
+    
+    if (next === "practice" && typeof botProfiles !== 'undefined' && typeof botDifficulty !== 'undefined') {
+        limitSpeed = botProfiles[botDifficulty].speed;
+    }
+
+    if(typeof players !== 'undefined' && players[1]) {
+      Object.assign(players[1],{
+        controls: localBlue ? ["arrowup","arrowdown","arrowleft","arrowright"] : ["w","s","a","d"],
+        kick: localBlue ? "m" : "x",
+        kickReady: true,
+        maxSpeed: limitSpeed
+      });
+    }
+    
+    if(typeof players !== 'undefined') {
+        if(mode === "guest" && players[1]) {
+          players[1].color = myColor; players[1].dark = myColor;
+        } else if(players[0]) {
+          players[0].color = myColor; players[0].dark = myColor;
+        }
+    }
+    
+    if(typeof resetPositions === 'function') resetPositions();
+    if(typeof updateScore === 'function') updateScore();
+    if(typeof setControls === 'function') setControls();
+    if(typeof message === 'function') message("¡A jugar!");
+    if(typeof show === 'function') show("match");
+  } catch(e) { console.error("Error en startGame:", e); }
 }
 function closeNetwork(){if(connection)connection.close();if(peer)peer.destroy();if(localChannel)localChannel.close();connection=peer=localChannel=null;}
 function returnMenu(){closeNetwork();mode=null;localKeys.clear();remoteKeys.clear();history.replaceState({},"",location.pathname);show("menu");}
@@ -168,137 +210,170 @@ function updateTimerDisplay(ms) {
     let m = Math.floor(totalSec / 60).toString().padStart(2, '0');
     let s = (totalSec % 60).toString().padStart(2, '0');
     $("timer-display").textContent = `${m}:${s}`;
+  function updateTimerDisplay(ms) {
+  try {
+    const reloj = document.getElementById("timer-display");
+    if (!reloj) return;
+    if (ms < 0) { reloj.textContent = "∞"; return; }
+    let totalSec = Math.ceil(ms / 1000);
+    let m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    let s = (totalSec % 60).toString().padStart(2, '0');
+    reloj.textContent = `${m}:${s}`;
+  } catch(e) { console.error("Error timer:", e); }
 }
 
 function update(dt,now){
-  if(mode==="guest"){
-    if(connection?.open&&now-lastInputSent>33){
-      connection.send({
-        type:"inputState",
-        keys:[...localKeys].filter(key=>["w","a","s","d","x"].includes(key)),
-        color: $("my-color").value
-      });
-      lastInputSent=now;
+  try {
+    if(mode==="guest"){
+      if(connection?.open && now - (window.lastInputSent||0) > 33){
+        const colorInput = document.getElementById("my-color");
+        connection.send({
+          type:"inputState",
+          keys:[...localKeys].filter(key=>["w","a","s","d","x"].includes(key)),
+          color: colorInput ? colorInput.value : "#329cf0"
+        });
+        window.lastInputSent=now;
+      }
+      return;
     }
-    return;
-  }
-  
-  if(!mode||kickoffUntil||matchEnded)return;
+    
+    if(!mode || (typeof kickoffUntil !== 'undefined' && kickoffUntil) || matchEnded) return;
 
-  let timeLeftMs = -1;
-  if (matchTimeLimit > 0) {
-     timeLeftMs = matchTimeLimit * 60000 - (now - matchStartTime);
-     updateTimerDisplay(timeLeftMs);
-     if (timeLeftMs <= 0) {
-         matchEnded = true;
-         message("¡TIEMPO AGOTADO!");
-         updateTimerDisplay(0);
-         setTimeout(() => returnMenu(), 4000);
-         return;
-     }
-  } else {
-     updateTimerDisplay(-1);
-  }
+    let timeLeftMs = -1;
+    if (matchTimeLimit > 0) {
+       timeLeftMs = matchTimeLimit * 60000 - (now - matchStartTime);
+       updateTimerDisplay(timeLeftMs);
+       if (timeLeftMs <= 0) {
+           matchEnded = true;
+           if(typeof message === 'function') message("¡TIEMPO AGOTADO!");
+           updateTimerDisplay(0);
+           setTimeout(() => { if(typeof returnMenu === 'function') returnMenu(); }, 4000);
+           return;
+       }
+    } else {
+       updateTimerDisplay(-1);
+    }
 
-  if(mode==="practice")updateBot(now);
-  updatePlayer(players[0],dt,localKeys);
-  updatePlayer(players[1],dt,mode==="local"?localKeys:remoteKeys);
-  collide(players[0],players[1],.5);
-  players.forEach(p=>collide(p,ball));
-  updateBall(dt);
-  
-  if(mode==="host"&&connection?.open&&now-lastStateSent>33){
-    connection.send({
-      type:"state",
-      ball:{...ball},
-      players:players.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,color:p.color})),
-      scores, message:$("message").textContent, timeLeft: timeLeftMs, ballStyle: currentBallStyle
-    });
-    lastStateSent=now;
-  }
+    if(mode==="practice" && typeof updateBot === 'function') updateBot(now);
+    if(typeof updatePlayer === 'function' && typeof players !== 'undefined') {
+        if(players[0]) updatePlayer(players[0],dt,localKeys);
+        if(players[1]) updatePlayer(players[1],dt,mode==="local"?localKeys:(typeof remoteKeys !== 'undefined' ? remoteKeys : localKeys));
+    }
+    if(typeof collide === 'function' && typeof players !== 'undefined' && players[0] && players[1]) {
+        collide(players[0],players[1],.5);
+        if(typeof ball !== 'undefined') players.forEach(p=>collide(p,ball));
+    }
+    if(typeof updateBall === 'function') updateBall(dt);
+    
+    if(mode==="host" && connection?.open && now - (window.lastStateSent||0) > 33){
+      const msgEl = document.getElementById("message");
+      connection.send({
+        type:"state",
+        ball: typeof ball !== 'undefined' ? {...ball} : {},
+        players: typeof players !== 'undefined' ? players.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,color:p.color})) : [],
+        scores: typeof scores !== 'undefined' ? scores : {green:0, blue:0}, 
+        message: msgEl ? msgEl.textContent : "¡A jugar!", 
+        timeLeft: timeLeftMs, 
+        ballStyle: typeof currentBallStyle !== 'undefined' ? currentBallStyle : 0
+      });
+      window.lastStateSent=now;
+    }
+  } catch(e) { console.error("Error en update:", e); }
 }
 
 function applyState(s){
-  Object.assign(ball,s.ball);
-  s.players.forEach((p,i)=>{
-    players[i].x = p.x; players[i].y = p.y; 
-    players[i].vx = p.vx; players[i].vy = p.vy;
-    players[i].color = p.color; players[i].dark = p.color;
-  });
-  scores=s.scores; updateScore(); message(s.message);
-  currentBallStyle = s.ballStyle;
-  updateTimerDisplay(s.timeLeft);
+  try {
+    if(s.ball && typeof ball !== 'undefined') Object.assign(ball,s.ball);
+    if(s.players && typeof players !== 'undefined') {
+        s.players.forEach((p,i)=>{
+          if(players[i]) {
+              players[i].x = p.x; players[i].y = p.y; 
+              players[i].vx = p.vx; players[i].vy = p.vy;
+              if(p.color) { players[i].color = p.color; players[i].dark = p.color; }
+          }
+        });
+    }
+    if(s.scores && typeof scores !== 'undefined') scores=s.scores; 
+    if(typeof updateScore === 'function') updateScore(); 
+    if(s.message && typeof message === 'function') message(s.message);
+    if(typeof s.ballStyle !== 'undefined') currentBallStyle = s.ballStyle;
+    if(typeof s.timeLeft !== 'undefined') updateTimerDisplay(s.timeLeft);
+  } catch(e) { console.error("Error en applyState:", e); }
 }
 function line(x1,y1,x2,y2){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
 function drawField(){ctx.clearRect(0,0,W,H);ctx.fillStyle="#2e9a55";ctx.fillRect(0,0,W,H);ctx.fillStyle="rgba(255,255,255,.035)";for(let x=field.left;x<field.right;x+=100)ctx.fillRect(x,field.top,50,field.bottom-field.top);ctx.strokeStyle="rgba(255,255,255,.9)";ctx.lineWidth=4;ctx.strokeRect(field.left,field.top,field.right-field.left,field.bottom-field.top);line(W/2,field.top,W/2,field.bottom);ctx.beginPath();ctx.arc(W/2,H/2,84,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.arc(W/2,H/2,5,0,Math.PI*2);ctx.fillStyle="white";ctx.fill();ctx.strokeStyle="rgba(245,250,255,.9)";ctx.lineWidth=4;ctx.strokeRect(field.left-field.depth,field.goalTop,field.depth,field.goalBottom-field.goalTop);ctx.strokeRect(field.right,field.goalTop,field.depth,field.goalBottom-field.goalTop);}
 function drawPlayer(p){ctx.save();ctx.translate(p.x,p.y);ctx.beginPath();ctx.arc(2,4,p.r,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.18)";ctx.fill();ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();ctx.strokeStyle=p.dark;ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.arc(-7,-8,7,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.32)";ctx.fill();ctx.restore();}
 function drawBall() {
-  ctx.save();
-  ctx.translate(ball.x, ball.y);
-  
-  ctx.beginPath();
-  ctx.arc(2, 3, ball.r, 0, Math.PI*2);
-  ctx.fillStyle="rgba(0,0,0,.22)";
-  ctx.fill();
+  try {
+    if(typeof ball === 'undefined' || typeof ctx === 'undefined') return;
+    
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    
+    ctx.beginPath();
+    ctx.arc(2, 3, ball.r, 0, Math.PI*2);
+    ctx.fillStyle="rgba(0,0,0,.22)";
+    ctx.fill();
 
-  ctx.beginPath();
-  ctx.arc(0, 0, ball.r, 0, Math.PI*2);
-  
-  switch(currentBallStyle) {
-    case 1: 
-      ctx.fillStyle = "#e31010"; ctx.fill();
-      ctx.fillStyle = "#111"; ctx.fillRect(-ball.r, 0, ball.r*2, ball.r); 
-      ctx.strokeStyle = "#fff";
-      break;
-    case 2: 
-      ctx.fillStyle = "#75aadb"; ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.fillRect(-ball.r, -ball.r/3, ball.r*2, ball.r/1.5); 
-      ctx.strokeStyle = "#e8b031"; 
-      break;
-    case 3: 
-      ctx.fillStyle = "#ff4500"; ctx.fill();
-      ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(0,0,ball.r/1.8,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle = "#8b0000";
-      break;
-    case 4: 
-      ctx.fillStyle = "#0ff"; ctx.fill();
-      ctx.strokeStyle = "#f0f"; ctx.lineWidth = 3;
-      break;
-    case 5: 
-      ctx.fillStyle = "#ffd700"; ctx.fill();
-      ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
-      break;
-    case 6: 
-      ctx.fillStyle = "#ccff00"; ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(-7, -7, 10, 0, Math.PI/2); ctx.stroke(); 
-      break;
-    case 7: 
-      ctx.fillStyle = "#ff6600"; ctx.fill();
-      ctx.strokeStyle = "#111"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, -ball.r); ctx.lineTo(0, ball.r); ctx.stroke(); 
-      ctx.beginPath(); ctx.moveTo(-ball.r, 0); ctx.lineTo(ball.r, 0); ctx.stroke();
-      break;
-    case 8: 
-      ctx.fillStyle = "#ff3333"; ctx.fill();
-      ctx.strokeStyle = "#33cc33"; ctx.lineWidth = 4;
-      ctx.fillStyle = "#111"; ctx.fillRect(-2, -2, 4, 4); 
-      break;
-    case 9: 
-      ctx.fillStyle = "#222"; ctx.fill();
-      ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
-      break;
-    default: 
-      ctx.fillStyle = "#f8f8f3"; ctx.fill();
-      ctx.strokeStyle = "#37444a"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0,0,4.5,0,Math.PI*2); ctx.fillStyle="#334047"; ctx.fill();
-      break;
-  }
-  
-  if(currentBallStyle !== 4 && currentBallStyle !== 7) {
-      ctx.lineWidth = 2;
-      ctx.stroke();
-  }
-  ctx.restore();
+    ctx.beginPath();
+    ctx.arc(0, 0, ball.r, 0, Math.PI*2);
+    
+    const style = typeof currentBallStyle !== 'undefined' ? currentBallStyle : 0;
+    switch(style) {
+      case 1: 
+        ctx.fillStyle = "#e31010"; ctx.fill();
+        ctx.fillStyle = "#111"; ctx.fillRect(-ball.r, 0, ball.r*2, ball.r); 
+        ctx.strokeStyle = "#fff";
+        break;
+      case 2: 
+        ctx.fillStyle = "#75aadb"; ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(-ball.r, -ball.r/3, ball.r*2, ball.r/1.5); 
+        ctx.strokeStyle = "#e8b031"; 
+        break;
+      case 3: 
+        ctx.fillStyle = "#ff4500"; ctx.fill();
+        ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(0,0,ball.r/1.8,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "#8b0000";
+        break;
+      case 4: 
+        ctx.fillStyle = "#0ff"; ctx.fill();
+        ctx.strokeStyle = "#f0f"; ctx.lineWidth = 3;
+        break;
+      case 5: 
+        ctx.fillStyle = "#ffd700"; ctx.fill();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
+        break;
+      case 6: 
+        ctx.fillStyle = "#ccff00"; ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(-7, -7, 10, 0, Math.PI/2); ctx.stroke(); 
+        break;
+      case 7: 
+        ctx.fillStyle = "#ff6600"; ctx.fill();
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, -ball.r); ctx.lineTo(0, ball.r); ctx.stroke(); 
+        ctx.beginPath(); ctx.moveTo(-ball.r, 0); ctx.lineTo(ball.r, 0); ctx.stroke();
+        break;
+      case 8: 
+        ctx.fillStyle = "#ff3333"; ctx.fill();
+        ctx.strokeStyle = "#33cc33"; ctx.lineWidth = 4;
+        ctx.fillStyle = "#111"; ctx.fillRect(-2, -2, 4, 4); 
+        break;
+      case 9: 
+        ctx.fillStyle = "#222"; ctx.fill();
+        ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
+        break;
+      default: 
+        ctx.fillStyle = "#f8f8f3"; ctx.fill();
+        ctx.strokeStyle = "#37444a"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0,0,4.5,0,Math.PI*2); ctx.fillStyle="#334047"; ctx.fill();
+        break;
+    }
+    
+    if(style !== 4 && style !== 7) {
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    ctx.restore();
+  } catch(e) { console.error("Error en drawBall:", e); }
 }
-const joinId=new URLSearchParams(location.search).get("join");if(joinId)joinId.startsWith("local-")?joinLocalMatch(joinId):joinMatch(joinId);else show("menu");requestAnimationFrame(loop);
